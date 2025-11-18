@@ -31,10 +31,11 @@ Google Colab with NVCC Compiler
 6. Copy output data from the device to the host and verify the results against the host's sequential vector addition. Free memory on the host and the device.
 
 ## PROGRAM:
-```
-#include<iostream>
-#include<cuda_runtime.h>
-#include "device_launch_parameters.h"
+```C
+%%cuda
+#include <cuda_runtime.h>
+#include <stdio.h>
+#include <sys/time.h>
 
 #ifndef _COMMON_H
 #define _COMMON_H
@@ -51,9 +52,18 @@ Google Colab with NVCC Compiler
     }                                                                          \
 }
 
-#endif 
+inline double seconds()
+{
+    struct timeval tp;
+    struct timezone tzp;
+    gettimeofday(&tp, &tzp);
+    return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
+}
 
-void checkResult(float* hostRef, float* gpuRef, const int N)
+#endif // _COMMON_H
+
+
+void checkResult(float *hostRef, float *gpuRef, const int N)
 {
     double epsilon = 1.0E-8;
     bool match = 1;
@@ -65,7 +75,7 @@ void checkResult(float* hostRef, float* gpuRef, const int N)
             match = 0;
             printf("Arrays do not match!\n");
             printf("host %5.2f gpu %5.2f at current %d\n", hostRef[i],
-                gpuRef[i], i);
+                   gpuRef[i], i);
             break;
         }
     }
@@ -75,21 +85,21 @@ void checkResult(float* hostRef, float* gpuRef, const int N)
     return;
 }
 
-void initialData(float* ip, int size)
+void initialData(float *ip, int size)
 {
     // generate different seed for random number
     time_t t;
-    srand((unsigned)time(&t));
+    srand((unsigned) time(&t));
 
     for (int i = 0; i < size; i++)
     {
-        ip[i] = (float)(rand() & 0xFF) / 10.0f;
+        ip[i] = (float)( rand() & 0xFF ) / 10.0f;
     }
 
     return;
 }
 
-void sumArraysOnHost(float* A, float* B, float* C, const int N)
+void sumArraysOnHost(float *A, float *B, float *C, const int N)
 {
     for (int idx = 0; idx < N; idx++)
     {
@@ -97,15 +107,18 @@ void sumArraysOnHost(float* A, float* B, float* C, const int N)
     }
 }
 
-__global__ void sumArraysOnGPU(float* A, float* B, float* C, const int N) {
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid < N) {
-        C[tid] = A[tid] + B[tid];
+__global__ void sumArraysOnGPU(float *A, float *B, float *C, const int N)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (i < N)
+    {
+        C[i] = A[i] + B[i];
     }
 }
 
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     printf("%s Starting...\n", argv[0]);
 
@@ -123,41 +136,31 @@ int main(int argc, char** argv)
     // malloc host memory
     size_t nBytes = nElem * sizeof(float);
 
-    float* h_A, * h_B, * hostRef, * gpuRef;
-    h_A = (float*)malloc(nBytes);
-    h_B = (float*)malloc(nBytes);
-    hostRef = (float*)malloc(nBytes);
-    gpuRef = (float*)malloc(nBytes);
+    float *h_A, *h_B, *hostRef, *gpuRef;
+    h_A     = (float *)malloc(nBytes);
+    h_B     = (float *)malloc(nBytes);
+    hostRef = (float *)malloc(nBytes);
+    gpuRef  = (float *)malloc(nBytes);
+
+    double iStart, iElaps;
 
     // initialize data at host side
-    cudaEvent_t start, stop;
-    CHECK(cudaEventCreate(&start));
-    CHECK(cudaEventCreate(&stop));
-
-    CHECK(cudaEventRecord(start));
-
+    iStart = seconds();
     initialData(h_A, nElem);
     initialData(h_B, nElem);
-
-    CHECK(cudaEventRecord(stop));
-    CHECK(cudaEventSynchronize(stop));
-
-    float milliseconds = 0;
-    CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-    printf("initialization: \t %f sec\n", milliseconds / 1000.0f);
+    iElaps = seconds() - iStart;
+    printf("initialData Time elapsed %f sec\n", iElaps);
     memset(hostRef, 0, nBytes);
-    memset(gpuRef, 0, nBytes);
+    memset(gpuRef,  0, nBytes);
 
     // add vector at host side for result checks
-    CHECK(cudaEventRecord(start));
+    iStart = seconds();
     sumArraysOnHost(h_A, h_B, hostRef, nElem);
-    CHECK(cudaEventRecord(stop));
-    CHECK(cudaEventSynchronize(stop));
-    CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-    printf("sumMatrix on host:\t %f sec\n", milliseconds / 1000.0f);
+    iElaps = seconds() - iStart;
+    printf("sumArraysOnHost Time elapsed %f sec\n", iElaps);
 
     // malloc device global memory
-    float* d_A, * d_B, * d_C;
+    float *d_A, *d_B, *d_C;
     CHECK(cudaMalloc((float**)&d_A, nBytes));
     CHECK(cudaMalloc((float**)&d_B, nBytes));
     CHECK(cudaMalloc((float**)&d_C, nBytes));
@@ -169,22 +172,27 @@ int main(int argc, char** argv)
 
     // invoke kernel at host side
     int iLen = 512;
-    dim3 block(iLen);
-    dim3 grid((nElem + block.x - 1) / block.x);
+    dim3 block (iLen);
+    dim3 grid  ((nElem + block.x - 1) / block.x);
 
-    CHECK(cudaEventRecord(start));
-    sumArraysOnGPU<<<grid,block>>>(d_A, d_B, d_C, nElem);
-
-    CHECK(cudaEventRecord(stop));
+    iStart = seconds();
+    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
     CHECK(cudaDeviceSynchronize());
-    CHECK(cudaEventSynchronize(stop));
+    iElaps = seconds() - iStart;
+    printf("sumArraysOnGPU <<<  %d, %d  >>>  Time elapsed %f sec\n", grid.x,
+           block.x, iElaps);
+    iLen = 256;                 // Removed 'int'
+    block = dim3 (iLen);        // Removed 'dim3', explicitly using assignment and constructor
+    grid = dim3 ((nElem + block.x - 1) / block.x); // Removed 'dim3'
 
-    CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-    printf("sumMatrix on gpu :\t %f sec <<<(%d,%d), (%d,%d)>>> \n", milliseconds / 1000.0f,
-        grid.x, grid.y, block.x, block.y);
-
+    iStart = seconds();
+    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    CHECK(cudaDeviceSynchronize());
+    iElaps = seconds() - iStart;
+    printf("sumArraysOnGPU <<<  %d, %d  >>>  Time elapsed %f sec\n", grid.x,
+            block.x, iElaps);
     // check kernel error
-    CHECK(cudaGetLastError());
+    CHECK(cudaGetLastError()) ;
 
     // copy kernel result back to host side
     CHECK(cudaMemcpy(gpuRef, d_C, nBytes, cudaMemcpyDeviceToHost));
@@ -208,7 +216,8 @@ int main(int argc, char** argv)
 ```
 
 ## OUTPUT:
-<img width="976" height="174" alt="image" src="https://github.com/user-attachments/assets/a9585b31-9d53-4663-8843-184cdf24bb46" />
+<img width="591" height="124" alt="image" src="https://github.com/user-attachments/assets/76be550a-6e62-463f-a772-a9cbacb825e7" />
+
 
 
 
