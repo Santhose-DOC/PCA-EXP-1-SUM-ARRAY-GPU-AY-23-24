@@ -170,27 +170,65 @@ int main(int argc, char **argv)
     CHECK(cudaMemcpy(d_B, h_B, nBytes, cudaMemcpyHostToDevice));
     CHECK(cudaMemcpy(d_C, gpuRef, nBytes, cudaMemcpyHostToDevice));
 
+    dim3 block;
+    dim3 grid;
     // invoke kernel at host side
     int iLen = 512;
-    dim3 block (iLen);
-    dim3 grid  ((nElem + block.x - 1) / block.x);
+    
+    
+    int numBlocks = 4096;    // SAME GRID SIZE FOR ALL RUNS
+
+    // --- 512 ---
+    iLen = 512;
+    block = dim3(iLen);
+    grid = dim3(numBlocks);
 
     iStart = seconds();
     sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
     CHECK(cudaDeviceSynchronize());
     iElaps = seconds() - iStart;
-    printf("sumArraysOnGPU <<<  %d, %d  >>>  Time elapsed %f sec\n", grid.x,
-           block.x, iElaps);
-    iLen = 256;                 // Removed 'int'
-    block = dim3 (iLen);        // Removed 'dim3', explicitly using assignment and constructor
-    grid = dim3 ((nElem + block.x - 1) / block.x); // Removed 'dim3'
+    printf("GPU <<<%d blocks, %d threads>>> Time = %f sec\n",
+          grid.x, block.x, iElaps);
+
+
+    // --- 256 ---
+    iLen = 256;
+    block = dim3(iLen);
+    grid = dim3(numBlocks);
 
     iStart = seconds();
     sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
     CHECK(cudaDeviceSynchronize());
     iElaps = seconds() - iStart;
-    printf("sumArraysOnGPU <<<  %d, %d  >>>  Time elapsed %f sec\n", grid.x,
-            block.x, iElaps);
+    printf("GPU <<<%d blocks, %d threads>>> Time = %f sec\n",
+          grid.x, block.x, iElaps);
+
+
+    // --- 1023 ---
+    iLen = 1023;
+    block = dim3(iLen);
+    grid = dim3(numBlocks);
+
+    iStart = seconds();
+    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    CHECK(cudaDeviceSynchronize());
+    iElaps = seconds() - iStart;
+    printf("GPU <<<%d blocks, %d threads>>> Time = %f sec\n",
+          grid.x, block.x, iElaps);
+
+
+    // --- 1024 ---
+    iLen = 1024;
+    block = dim3(iLen);
+    grid = dim3(numBlocks);
+
+    iStart = seconds();
+    sumArraysOnGPU<<<grid, block>>>(d_A, d_B, d_C, nElem);
+    CHECK(cudaDeviceSynchronize());
+    iElaps = seconds() - iStart;
+    printf("GPU <<<%d blocks, %d threads>>> Time = %f sec\n",
+       grid.x, block.x, iElaps);
+
     // check kernel error
     CHECK(cudaGetLastError()) ;
 
@@ -216,7 +254,8 @@ int main(int argc, char **argv)
 ```
 
 ## OUTPUT:
-<img width="591" height="124" alt="image" src="https://github.com/user-attachments/assets/76be550a-6e62-463f-a772-a9cbacb825e7" />
+<img width="1259" height="187" alt="image" src="https://github.com/user-attachments/assets/4ae941c7-0999-49cc-a3d3-3ba8c76afeef" />
+
 
 
 
